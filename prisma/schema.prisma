@@ -1,0 +1,266 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  ACCOUNT_MANAGER
+  CLIENT
+}
+
+enum Plan {
+  STARTER
+  GROWTH
+  ENTERPRISE
+}
+
+enum OrgStatus {
+  ACTIVE
+  PAUSED
+  CHURNED
+}
+
+enum TonePreference {
+  PROFESSIONAL
+  CASUAL
+  AGGRESSIVE
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum Channel {
+  LINKEDIN
+  EMAIL
+  REDDIT
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  REPLIED
+  INTERESTED
+  BOOKED
+  UNSUBSCRIBED
+}
+
+enum ReplyClassification {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+  OOO
+  UNSUBSCRIBE
+}
+
+model User {
+  id        String        @id @default(cuid())
+  email     String        @unique
+  name      String?
+  password  String?
+  role      Role          @default(CLIENT)
+  orgId     String?
+  org       Organization? @relation(fields: [orgId], references: [id])
+  notes     AccountManagerNote[] @relation("ManagerNotes")
+  accounts  Account[]
+  sessions  Session[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Organization {
+  id               String        @id @default(cuid())
+  name             String
+  plan             Plan          @default(STARTER)
+  stripeCustomerId String?
+  monthlyBudget    Int           @default(500)
+  status           OrgStatus     @default(ACTIVE)
+  users            User[]
+  icps             ICP[]
+  campaigns        Campaign[]
+  notes            AccountManagerNote[]
+  webhookEvents    WebhookEvent[]
+  apiUsageLogs     ApiUsageLog[]
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+model ICP {
+  id               String         @id @default(cuid())
+  orgId            String
+  org              Organization   @relation(fields: [orgId], references: [id])
+  targetTitles     String[]
+  targetIndustries String[]
+  companySizeMin   Int            @default(1)
+  companySizeMax   Int            @default(10000)
+  painPoints       String         @db.Text
+  valueProps       String         @db.Text
+  tonePreference   TonePreference @default(PROFESSIONAL)
+  blacklistDomains String[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model Campaign {
+  id                 String         @id @default(cuid())
+  orgId              String
+  org                Organization   @relation(fields: [orgId], references: [id])
+  name               String
+  status             CampaignStatus @default(DRAFT)
+  channels           Channel[]
+  totalLeadsTargeted Int            @default(0)
+  totalContacted     Int            @default(0)
+  totalReplied       Int            @default(0)
+  totalBooked        Int            @default(0)
+  startDate          DateTime?
+  endDate            DateTime?
+  leads              Lead[]
+  sequences          TouchSequence[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([orgId])
+  @@index([status])
+}
+
+model Lead {
+  id             String     @id @default(cuid())
+  campaignId     String
+  campaign       Campaign   @relation(fields: [campaignId], references: [id])
+  firstName      String
+  lastName       String
+  title          String?
+  company        String?
+  linkedinUrl    String?
+  email          String?
+  redditUsername String?
+  enrichmentData Json?
+  status         LeadStatus @default(NEW)
+  leadScore      Int        @default(0)
+  touchLogs      TouchLog[]
+  memory         ConversationMemory?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([campaignId])
+  @@index([status])
+}
+
+model TouchSequence {
+  id           String    @id @default(cuid())
+  campaignId   String
+  campaign     Campaign  @relation(fields: [campaignId], references: [id])
+  stepNumber   Int
+  channel      Channel
+  delayDays    Int       @default(0)
+  subjectLine  String?
+  bodyTemplate String    @db.Text
+  aiGenerated  Boolean   @default(false)
+  touchLogs    TouchLog[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model TouchLog {
+  id                  String               @id @default(cuid())
+  leadId              String
+  lead                Lead                 @relation(fields: [leadId], references: [id])
+  sequenceStepId      String
+  sequenceStep        TouchSequence        @relation(fields: [sequenceStepId], references: [id])
+  sentAt              DateTime?
+  deliveredAt         DateTime?
+  openedAt            DateTime?
+  repliedAt           DateTime?
+  replyContent        String?              @db.Text
+  replyClassification ReplyClassification?
+  createdAt           DateTime             @default(now())
+
+  @@index([leadId])
+  @@index([sequenceStepId])
+  @@index([sentAt])
+}
+
+model ConversationMemory {
+  id            String   @id @default(cuid())
+  leadId        String   @unique
+  lead          Lead     @relation(fields: [leadId], references: [id])
+  messages      Json
+  pineconeId    String?
+  lastUpdatedAt DateTime @default(now())
+}
+
+model AccountManagerNote {
+  id        String       @id @default(cuid())
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id])
+  managerId String
+  manager   User         @relation("ManagerNotes", fields: [managerId], references: [id])
+  content   String       @db.Text
+  createdAt DateTime     @default(now())
+}
+
+model WebhookEvent {
+  id          String        @id @default(cuid())
+  orgId       String?
+  org         Organization? @relation(fields: [orgId], references: [id])
+  source      String
+  payload     Json
+  processedAt DateTime?
+  createdAt   DateTime      @default(now())
+}
+
+model ApiUsageLog {
+  id            String       @id @default(cuid())
+  orgId         String
+  org           Organization @relation(fields: [orgId], references: [id])
+  service       String
+  model         String?
+  inputTokens   Int          @default(0)
+  outputTokens  Int          @default(0)
+  estimatedCost Float        @default(0)
+  createdAt     DateTime     @default(now())
+
+  @@index([orgId])
+}
