@@ -2,9 +2,11 @@ import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { Plan } from "@prisma/client";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2026-02-25.clover",
-});
+function getStripe() {
+  return new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+    apiVersion: "2026-02-25.clover",
+  });
+}
 
 const PLAN_LIMITS: Record<Plan, { leads: number; channels: number; price: number }> = {
   STARTER: { leads: 500, channels: 1, price: 1497 },
@@ -22,7 +24,7 @@ export const BillingService = {
         : null;
     if (!priceId) throw new Error("Invalid plan or missing price ID");
 
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "subscription",
       customer_email: email,
@@ -35,7 +37,7 @@ export const BillingService = {
   },
 
   async createPortalSession(stripeCustomerId: string) {
-    const session = await stripe.billingPortal.sessions.create({
+    const session = await getStripe().billingPortal.sessions.create({
       customer: stripeCustomerId,
       return_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing`,
     });
@@ -43,7 +45,7 @@ export const BillingService = {
   },
 
   async handleWebhook(payload: string, signature: string) {
-    const event = stripe.webhooks.constructEvent(
+    const event = getStripe().webhooks.constructEvent(
       payload,
       signature,
       process.env.STRIPE_WEBHOOK_SECRET || ""
@@ -78,7 +80,7 @@ export const BillingService = {
   },
 
   async getMRR(): Promise<number> {
-    const subscriptions = await stripe.subscriptions.list({
+    const subscriptions = await getStripe().subscriptions.list({
       status: "active",
       limit: 100,
     });

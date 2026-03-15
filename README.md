@@ -2,6 +2,20 @@
 
 Cadence AI orchestrates personalized, multi-touch outreach across **LinkedIn**, **Email**, and **Reddit** in a single dashboard. It combines an AI layer (Claude 3.5 Sonnet) for copy generation and reply classification with a human account manager layer for quality control — so sales teams book more calls without lifting a finger.
 
+## Preview
+
+### Landing Page — Hero
+![Hero section](screenshots/hero.png)
+
+### Landing Page — Pricing
+![Pricing section](screenshots/pricing.png)
+
+### Login
+![Login page](screenshots/login.png)
+
+### Register
+![Register page](screenshots/register.png)
+
 ## Features
 
 - **Multi-channel outreach** — LinkedIn connection requests + DMs, Email drip sequences, Reddit community DMs
