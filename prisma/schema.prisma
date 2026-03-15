@@ -2,11 +2,9 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// In Prisma 7, the datasource URL is configured in prisma.config.ts
-// (via `datasourceUrl`) rather than directly in the schema file.
-// See prisma.config.ts at the project root.
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -64,18 +62,18 @@ enum ReplyClassification {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
+  id        String        @id @default(cuid())
+  email     String        @unique
   name      String?
   password  String?
-  role      Role     @default(CLIENT)
+  role      Role          @default(CLIENT)
   orgId     String?
   org       Organization? @relation(fields: [orgId], references: [id])
   notes     AccountManagerNote[] @relation("ManagerNotes")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
   accounts  Account[]
   sessions  Session[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 }
 
 model Account {
@@ -92,6 +90,7 @@ model Account {
   id_token          String? @db.Text
   session_state     String?
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([provider, providerAccountId])
 }
 
@@ -107,79 +106,80 @@ model VerificationToken {
   identifier String
   token      String   @unique
   expires    DateTime
+
   @@unique([identifier, token])
 }
 
 model Organization {
-  id               String    @id @default(cuid())
+  id               String        @id @default(cuid())
   name             String
-  plan             Plan      @default(STARTER)
+  plan             Plan          @default(STARTER)
   stripeCustomerId String?
-  monthlyBudget    Int       @default(500)
-  status           OrgStatus @default(ACTIVE)
+  monthlyBudget    Int           @default(500)
+  status           OrgStatus     @default(ACTIVE)
   users            User[]
   icps             ICP[]
   campaigns        Campaign[]
   notes            AccountManagerNote[]
   webhookEvents    WebhookEvent[]
   apiUsageLogs     ApiUsageLog[]
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 }
 
 model ICP {
-  id                String         @id @default(cuid())
-  orgId             String
-  org               Organization   @relation(fields: [orgId], references: [id])
-  targetTitles      String[]
-  targetIndustries  String[]
-  companySizeMin    Int            @default(1)
-  companySizeMax    Int            @default(10000)
-  painPoints        String         @db.Text
-  valueProps        String         @db.Text
-  tonePreference    TonePreference @default(PROFESSIONAL)
-  blacklistDomains  String[]
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  id               String         @id @default(cuid())
+  orgId            String
+  org              Organization   @relation(fields: [orgId], references: [id])
+  targetTitles     String[]
+  targetIndustries String[]
+  companySizeMin   Int            @default(1)
+  companySizeMax   Int            @default(10000)
+  painPoints       String         @db.Text
+  valueProps       String         @db.Text
+  tonePreference   TonePreference @default(PROFESSIONAL)
+  blacklistDomains String[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 }
 
 model Campaign {
-  id                String         @id @default(cuid())
-  orgId             String
-  org               Organization   @relation(fields: [orgId], references: [id])
-  name              String
-  status            CampaignStatus @default(DRAFT)
-  channels          Channel[]
-  totalLeadsTargeted Int           @default(0)
-  totalContacted    Int            @default(0)
-  totalReplied      Int            @default(0)
-  totalBooked       Int            @default(0)
-  startDate         DateTime?
-  endDate           DateTime?
-  leads             Lead[]
-  sequences         TouchSequence[]
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  id                 String         @id @default(cuid())
+  orgId              String
+  org                Organization   @relation(fields: [orgId], references: [id])
+  name               String
+  status             CampaignStatus @default(DRAFT)
+  channels           Channel[]
+  totalLeadsTargeted Int            @default(0)
+  totalContacted     Int            @default(0)
+  totalReplied       Int            @default(0)
+  totalBooked        Int            @default(0)
+  startDate          DateTime?
+  endDate            DateTime?
+  leads              Lead[]
+  sequences          TouchSequence[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 }
 
 model Lead {
-  id              String     @id @default(cuid())
-  campaignId      String
-  campaign        Campaign   @relation(fields: [campaignId], references: [id])
-  firstName       String
-  lastName        String
-  title           String?
-  company         String?
-  linkedinUrl     String?
-  email           String?
-  redditUsername  String?
-  enrichmentData  Json?
-  status          LeadStatus @default(NEW)
-  leadScore       Int        @default(0)
-  touchLogs       TouchLog[]
-  memory          ConversationMemory?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  id             String     @id @default(cuid())
+  campaignId     String
+  campaign       Campaign   @relation(fields: [campaignId], references: [id])
+  firstName      String
+  lastName       String
+  title          String?
+  company        String?
+  linkedinUrl    String?
+  email          String?
+  redditUsername String?
+  enrichmentData Json?
+  status         LeadStatus @default(NEW)
+  leadScore      Int        @default(0)
+  touchLogs      TouchLog[]
+  memory         ConversationMemory?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 }
 
 model TouchSequence {
@@ -232,23 +232,23 @@ model AccountManagerNote {
 }
 
 model WebhookEvent {
-  id          String       @id @default(cuid())
+  id          String        @id @default(cuid())
   orgId       String?
   org         Organization? @relation(fields: [orgId], references: [id])
   source      String
   payload     Json
   processedAt DateTime?
-  createdAt   DateTime     @default(now())
+  createdAt   DateTime      @default(now())
 }
 
 model ApiUsageLog {
-  id           String       @id @default(cuid())
-  orgId        String
-  org          Organization @relation(fields: [orgId], references: [id])
-  service      String
-  model        String?
-  inputTokens  Int          @default(0)
-  outputTokens Int          @default(0)
-  estimatedCost Float       @default(0)
-  createdAt    DateTime     @default(now())
+  id            String       @id @default(cuid())
+  orgId         String
+  org           Organization @relation(fields: [orgId], references: [id])
+  service       String
+  model         String?
+  inputTokens   Int          @default(0)
+  outputTokens  Int          @default(0)
+  estimatedCost Float        @default(0)
+  createdAt     DateTime     @default(now())
 }
