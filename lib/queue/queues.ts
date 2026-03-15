@@ -1,10 +1,16 @@
 import { Queue, QueueOptions } from "bullmq";
 
+const redisUrl = new URL(process.env.REDIS_URL || "redis://localhost:6379");
+
+const connection = {
+  host: redisUrl.hostname,
+  port: parseInt(redisUrl.port) || 6379,
+  password: redisUrl.password || undefined,
+  maxRetriesPerRequest: null as null,
+};
+
 const defaultQueueOptions: QueueOptions = {
-  connection: {
-    url: process.env.REDIS_URL || "redis://localhost:6379",
-    maxRetriesPerRequest: null,
-  } as any,
+  connection,
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: "exponential", delay: 5000 },
