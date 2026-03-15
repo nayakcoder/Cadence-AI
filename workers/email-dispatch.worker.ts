@@ -1,14 +1,7 @@
 import { Worker, Job } from "bullmq";
 import { prisma } from "../lib/prisma";
 import { SendGridService } from "../lib/integrations/sendgrid";
-
-const redisUrl = new URL(process.env.REDIS_URL || "redis://localhost:6379");
-const connection = {
-  host: redisUrl.hostname,
-  port: parseInt(redisUrl.port) || 6379,
-  password: redisUrl.password || undefined,
-  maxRetriesPerRequest: null as null,
-};
+import { redisConnection as connection } from "../lib/redis";
 
 interface EmailDispatchJob {
   leadId: string;

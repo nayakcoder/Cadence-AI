@@ -74,27 +74,34 @@ export async function POST(req: NextRequest) {
     totalLeadsTargeted: data.monthlyLeadGoal,
   });
 
-  // Update org with monthly budget
-  await prisma.organization.update({
-    where: { id: orgId },
-    data: { monthlyBudget: data.monthlyLeadGoal },
-  });
-
-  // Notify account managers
-  try {
-    const managers = await prisma.user.findMany({
-      where: { role: "ACCOUNT_MANAGER" },
-    });
-    for (const manager of managers) {
-      await SendGridService.sendNotificationEmail(
-        manager.email,
-        "New Client Onboarding Complete",
-        `A new client has completed onboarding. Campaign "${campaignName}" is ready for review. Please review and activate the campaign.`
-      );
-    }
-  } catch (e) {
-    // Email notifications are non-critical
-  }
+  // Update org budget and notify account managers concurrently – these two
+  // operations are independent so there is no need to wait for one before
+  // starting the other.
+  await Promise.all([
+    prisma.organization.update({
+      where: { id: orgId },
+      data: { monthlyBudget: data.monthlyLeadGoal },
+    }),
+    (async () => {
+      try {
+        const managers = await prisma.user.findMany({
+          where: { role: "ACCOUNT_MANAGER" },
+          select: { email: true },
+        });
+        await Promise.all(
+          managers.map((manager) =>
+            SendGridService.sendNotificationEmail(
+              manager.email,
+              "New Client Onboarding Complete",
+              `A new client has completed onboarding. Campaign "${campaignName}" is ready for review. Please review and activate the campaign.`
+            )
+          )
+        );
+      } catch {
+        // Email notifications are non-critical
+      }
+    })(),
+  ]);
 
   return NextResponse.json({ icp, campaign }, { status: 201 });
 }

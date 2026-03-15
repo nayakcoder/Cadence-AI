@@ -160,6 +160,9 @@ model Campaign {
   sequences          TouchSequence[]
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
+
+  @@index([orgId])
+  @@index([status])
 }
 
 model Lead {
@@ -180,6 +183,9 @@ model Lead {
   memory         ConversationMemory?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
+
+  @@index([campaignId])
+  @@index([status])
 }
 
 model TouchSequence {
@@ -210,6 +216,10 @@ model TouchLog {
   replyContent        String?              @db.Text
   replyClassification ReplyClassification?
   createdAt           DateTime             @default(now())
+
+  @@index([leadId])
+  @@index([sequenceStepId])
+  @@index([sentAt])
 }
 
 model ConversationMemory {
@@ -251,4 +261,6 @@ model ApiUsageLog {
   outputTokens  Int          @default(0)
   estimatedCost Float        @default(0)
   createdAt     DateTime     @default(now())
+
+  @@index([orgId])
 }

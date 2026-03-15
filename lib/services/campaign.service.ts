@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { CampaignStatus, Channel, Prisma } from "@prisma/client";
+import { CampaignStatus, Channel } from "@prisma/client";
 
 export interface CreateCampaignInput {
   orgId: string;
@@ -54,57 +54,77 @@ export const CampaignService = {
   async getAnalytics(id: string) {
     const campaign = await prisma.campaign.findUnique({
       where: { id },
-      include: {
-        leads: {
-          include: {
-            touchLogs: {
-              include: { sequenceStep: true },
-            },
-          },
-        },
+      select: {
+        totalLeadsTargeted: true,
+        totalContacted: true,
+        totalReplied: true,
+        totalBooked: true,
         sequences: { orderBy: { stepNumber: "asc" } },
       },
     });
     if (!campaign) return null;
 
-    const analytics = {
+    // Count leads by status at the database level instead of loading every lead
+    // row into Node.js memory and filtering in JavaScript.
+    const [leadsByStatusRaw, sequenceStats] = await Promise.all([
+      prisma.lead.groupBy({
+        by: ["status"],
+        where: { campaign: { id } },
+        _count: { _all: true },
+      }),
+      // For each sequence step, count sent/opened/replied touch logs in one query
+      prisma.touchLog.groupBy({
+        by: ["sequenceStepId"],
+        where: { lead: { campaignId: id } },
+        _count: { _all: true, sentAt: true, openedAt: true, repliedAt: true },
+      }),
+    ]);
+
+    // Build a map of stepId → counts for O(1) lookup
+    const stepCountMap = new Map(
+      sequenceStats.map((s) => [
+        s.sequenceStepId,
+        {
+          sent: s._count.sentAt,
+          opened: s._count.openedAt,
+          replied: s._count.repliedAt,
+        },
+      ])
+    );
+
+    const defaultCounts = { NEW: 0, CONTACTED: 0, REPLIED: 0, INTERESTED: 0, BOOKED: 0, UNSUBSCRIBED: 0 };
+    const leadsByStatus = leadsByStatusRaw.reduce((acc, row) => {
+      acc[row.status as keyof typeof acc] = row._count._all;
+      return acc;
+    }, defaultCounts);
+
+    return {
       totalLeadsTargeted: campaign.totalLeadsTargeted,
       totalContacted: campaign.totalContacted,
       totalReplied: campaign.totalReplied,
       totalBooked: campaign.totalBooked,
-      replyRate: campaign.totalContacted > 0
-        ? Math.round((campaign.totalReplied / campaign.totalContacted) * 100)
-        : 0,
-      bookingRate: campaign.totalReplied > 0
-        ? Math.round((campaign.totalBooked / campaign.totalReplied) * 100)
-        : 0,
+      replyRate:
+        campaign.totalContacted > 0
+          ? Math.round((campaign.totalReplied / campaign.totalContacted) * 100)
+          : 0,
+      bookingRate:
+        campaign.totalReplied > 0
+          ? Math.round((campaign.totalBooked / campaign.totalReplied) * 100)
+          : 0,
       sequencePerformance: campaign.sequences.map((seq) => {
-        const logsForStep = campaign.leads.flatMap((l) =>
-          l.touchLogs.filter((tl) => tl.sequenceStepId === seq.id)
-        );
-        const sent = logsForStep.filter((l) => l.sentAt).length;
-        const opened = logsForStep.filter((l) => l.openedAt).length;
-        const replied = logsForStep.filter((l) => l.repliedAt).length;
+        const counts = stepCountMap.get(seq.id) ?? { sent: 0, opened: 0, replied: 0 };
         return {
           stepNumber: seq.stepNumber,
           channel: seq.channel,
-          sent,
-          opened,
-          replied,
-          openRate: sent > 0 ? Math.round((opened / sent) * 100) : 0,
-          replyRate: sent > 0 ? Math.round((replied / sent) * 100) : 0,
+          sent: counts.sent,
+          opened: counts.opened,
+          replied: counts.replied,
+          openRate: counts.sent > 0 ? Math.round((counts.opened / counts.sent) * 100) : 0,
+          replyRate: counts.sent > 0 ? Math.round((counts.replied / counts.sent) * 100) : 0,
         };
       }),
-      leadsByStatus: {
-        NEW: campaign.leads.filter((l) => l.status === "NEW").length,
-        CONTACTED: campaign.leads.filter((l) => l.status === "CONTACTED").length,
-        REPLIED: campaign.leads.filter((l) => l.status === "REPLIED").length,
-        INTERESTED: campaign.leads.filter((l) => l.status === "INTERESTED").length,
-        BOOKED: campaign.leads.filter((l) => l.status === "BOOKED").length,
-        UNSUBSCRIBED: campaign.leads.filter((l) => l.status === "UNSUBSCRIBED").length,
-      },
+      leadsByStatus,
     };
-    return analytics;
   },
 
   async updateStatus(id: string, status: CampaignStatus) {

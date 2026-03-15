@@ -3,14 +3,7 @@ import { prisma } from "../lib/prisma";
 import { AIService } from "../lib/services/ai.service";
 import { LeadService } from "../lib/services/lead.service";
 import { SendGridService } from "../lib/integrations/sendgrid";
-
-const redisUrl = new URL(process.env.REDIS_URL || "redis://localhost:6379");
-const connection = {
-  host: redisUrl.hostname,
-  port: parseInt(redisUrl.port) || 6379,
-  password: redisUrl.password || undefined,
-  maxRetriesPerRequest: null as null,
-};
+import { redisConnection as connection } from "../lib/redis";
 
 interface ReplyProcessorJob {
   leadId: string;
@@ -38,43 +31,44 @@ const worker = new Worker<ReplyProcessorJob>(
       leadCompany: lead.company || undefined,
     });
 
-    // Update touch log
-    await LeadService.updateTouchLog(touchLogId, {
-      repliedAt: new Date(),
-      replyContent,
-      replyClassification: classification.classification as any,
-    });
+    // Update touch log and lead status/score concurrently – these two writes are
+    // independent so there is no reason to wait for one before starting the other.
+    await Promise.all([
+      LeadService.updateTouchLog(touchLogId, {
+        repliedAt: new Date(),
+        replyContent,
+        replyClassification: classification.classification as any,
+      }),
+      // processReply already sets the correct status for UNSUBSCRIBE, so we
+      // don't need a separate prisma.lead.update call for that case.
+      LeadService.processReply(
+        leadId,
+        classification.classification as any,
+        classification.leadScoreAdjustment
+      ),
+    ]);
 
-    // Update lead status and score
-    await LeadService.processReply(
-      leadId,
-      classification.classification as any,
-      classification.leadScoreAdjustment
-    );
-
-    // If UNSUBSCRIBE: halt all future touches
     if (classification.classification === "UNSUBSCRIBE") {
-      await prisma.lead.update({
-        where: { id: leadId },
-        data: { status: "UNSUBSCRIBED" },
-      });
       console.log(`🚫 Lead ${leadId} unsubscribed — all future touches halted`);
     }
 
-    // If POSITIVE: notify account managers with suggested response
+    // If POSITIVE: notify all account managers in parallel
     if (classification.classification === "POSITIVE" && classification.suggestedResponse) {
       const managers = await prisma.user.findMany({
         where: { role: "ACCOUNT_MANAGER", orgId },
+        select: { email: true },
       });
-      for (const manager of managers) {
-        await SendGridService.sendNotificationEmail(
-          manager.email,
-          `🎯 Positive reply from ${lead.firstName} ${lead.lastName} at ${lead.company}`,
-          `<strong>${lead.firstName} ${lead.lastName}</strong> (${lead.title} at ${lead.company}) replied positively!<br/><br/>
-          <strong>Their reply:</strong><br/>${replyContent}<br/><br/>
-          <strong>Suggested response:</strong><br/>${classification.suggestedResponse}`
-        );
-      }
+      await Promise.all(
+        managers.map((manager) =>
+          SendGridService.sendNotificationEmail(
+            manager.email,
+            `🎯 Positive reply from ${lead.firstName} ${lead.lastName} at ${lead.company}`,
+            `<strong>${lead.firstName} ${lead.lastName}</strong> (${lead.title} at ${lead.company}) replied positively!<br/><br/>
+            <strong>Their reply:</strong><br/>${replyContent}<br/><br/>
+            <strong>Suggested response:</strong><br/>${classification.suggestedResponse}`
+          )
+        )
+      );
     }
 
     console.log(`✅ Reply processed for lead ${leadId}: ${classification.classification}`);

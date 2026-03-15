@@ -1,14 +1,7 @@
 import { Worker, Job } from "bullmq";
 import { prisma } from "../lib/prisma";
 import { queues } from "../lib/queue/queues";
-
-const redisUrl = new URL(process.env.REDIS_URL || "redis://localhost:6379");
-const connection = {
-  host: redisUrl.hostname,
-  port: parseInt(redisUrl.port) || 6379,
-  password: redisUrl.password || undefined,
-  maxRetriesPerRequest: null as null,
-};
+import { redisConnection as connection } from "../lib/redis";
 
 interface LeadEnrichmentJob {
   leadId: string;
@@ -20,7 +13,21 @@ const worker = new Worker<LeadEnrichmentJob>(
   async (job: Job<LeadEnrichmentJob>) => {
     const { leadId, campaignId } = job.data;
 
-    const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+    // Fetch the lead and its campaign's first sequence step in a single query
+    // to avoid a second round-trip after enrichment.
+    const [lead, campaign] = await Promise.all([
+      prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { id: true, linkedinUrl: true, email: true },
+      }),
+      prisma.campaign.findUnique({
+        where: { id: campaignId },
+        select: {
+          sequences: { take: 1, orderBy: { stepNumber: "asc" }, select: { channel: true } },
+        },
+      }),
+    ]);
+
     if (!lead) throw new Error(`Lead not found: ${leadId}`);
 
     // Placeholder enrichment — in production, integrate with Apollo.io, Hunter.io, etc.
@@ -34,12 +41,6 @@ const worker = new Worker<LeadEnrichmentJob>(
     await prisma.lead.update({
       where: { id: leadId },
       data: { enrichmentData },
-    });
-
-    // Queue copy generation for this lead
-    const campaign = await prisma.campaign.findUnique({
-      where: { id: campaignId },
-      include: { sequences: { take: 1, orderBy: { stepNumber: "asc" } } },
     });
 
     if (campaign?.sequences[0]) {
