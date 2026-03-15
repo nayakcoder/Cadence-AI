@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "workers": "ts-node workers/index.ts",
+    "db:push": "prisma db push",
+    "db:generate": "prisma generate",
+    "db:studio": "prisma studio"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
