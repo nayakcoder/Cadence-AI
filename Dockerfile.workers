@@ -1,0 +1,23 @@
+# Workers image – runs the BullMQ background workers
+FROM node:20-alpine
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser  --system --uid 1001 workers
+
+COPY package.json package-lock.json ./
+# Install all deps (including dev) so tsx is available for TypeScript execution
+RUN npm ci
+
+COPY workers  ./workers
+COPY lib      ./lib
+COPY prisma   ./prisma
+COPY tsconfig.json ./
+
+RUN npx prisma generate
+
+USER workers
+
+CMD ["npx", "tsx", "workers/index.ts"]
