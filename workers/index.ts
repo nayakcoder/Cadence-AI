@@ -11,11 +11,14 @@ console.log("🚀 All Cadence AI workers started");
 // Schedule the follow-up checker every 15 minutes
 import { queues } from "../lib/queue/queues";
 
-setInterval(async () => {
-  await queues.followUpScheduler.add("check-all", { type: "check-all" }, {
+setInterval(() => {
+  queues.followUpScheduler.add("check-all", { type: "check-all" }, {
     jobId: "follow-up-scheduler-singleton",
+  }).then(() => {
+    console.log("⏰ Follow-up scheduler triggered");
+  }).catch((err) => {
+    console.error("❌ Failed to enqueue follow-up scheduler job:", err);
   });
-  console.log("⏰ Follow-up scheduler triggered");
 }, 15 * 60 * 1000);
 
 // Handle graceful shutdown

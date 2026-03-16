@@ -135,7 +135,7 @@ const worker = new Worker<FollowUpSchedulerJob>(
 
         scheduled += pending.length;
       }
-    } while (true);
+    } while (leads.length === PAGE_SIZE);
 
     console.log(`✅ Follow-up scheduler: ${scheduled} touches queued`);
   },
